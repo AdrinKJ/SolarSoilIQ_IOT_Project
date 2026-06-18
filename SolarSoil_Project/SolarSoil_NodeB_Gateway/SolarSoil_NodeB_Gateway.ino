@@ -1,12 +1,23 @@
 #include <SPI.h>
 #include "LoRaWan_APP.h"
 #include "HT_SSD1306Wire.h"
+#include <WiFi.h>
+#include <PubSubClient.h>
 
 #define RF_FREQUENCY 868000000
 #define TX_OUTPUT_POWER 14
 #define LORA_BANDWIDTH 0
 #define LORA_SPREADING_FACTOR 7
 #define LORA_CODINGRATE 1
+
+const char* ssid = "OnePlus 12R";
+const char* password = "12345678";
+const char* mqtt_server = "broker.emqx.io";
+const int mqtt_port = 1883;
+const char* mqtt_topic = "solarsoil/nodeB";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 static SSD1306Wire display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 static RadioEvents_t RadioEvents;
@@ -17,16 +28,69 @@ void VextON(void) {
   digitalWrite(Vext, LOW);
 }
 
+void setupWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected! IP: " + WiFi.localIP().toString());
+}
+
+void reconnectMQTT() {
+  while (!client.connected()) {
+    Serial.println("Connecting to MQTT broker...");
+    String clientId = "NodeB-" + String(random(0xffff), HEX);
+    if (client.connect(clientId.c_str())) {
+      Serial.println("MQTT connected!");
+    } else {
+      Serial.print("MQTT failed, rc=");
+      Serial.println(client.state());
+      delay(2000);
+    }
+  }
+}
+
+// Parses "T:25.1,H:46.0,Soil:65,V:5.2" into JSON for MQTT
+void parseAndPublish(char* packet) {
+  float temp = 0, humidity = 0, voltage = 0, current = 0;
+  int soil = 0;
+
+  char* tPos = strstr(packet, "T:");
+  char* hPos = strstr(packet, "H:");
+  char* soilPos = strstr(packet, "Soil:");
+  char* vPos = strstr(packet, "V:");
+  char* cPos = strstr(packet, "C:");
+
+  if (tPos) temp = atof(tPos + 2);
+  if (hPos) humidity = atof(hPos + 2);
+  if (soilPos) soil = atoi(soilPos + 5);
+  if (vPos) voltage = atof(vPos + 2);
+  if (cPos) current = atof(cPos + 2);
+
+  char jsonPayload[200];
+  snprintf(jsonPayload, sizeof(jsonPayload),
+           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f}",
+           temp, humidity, soil, voltage, current);
+
+  Serial.println("Publishing: " + String(jsonPayload));
+  client.publish(mqtt_topic, jsonPayload);
+}
+
 void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   memcpy(rxpacket, payload, size);
   rxpacket[size] = '\0';
   Serial.printf("Received: %s, RSSI: %d\n", rxpacket, rssi);
 
   display.clear();
-  display.drawString(0, 0, "SolarSoil IQ Gateway");
+  display.drawString(0, 0, "SolarSoil Gateway");
   display.drawString(0, 15, rxpacket);
   display.drawString(0, 35, "RSSI: " + String(rssi));
   display.display();
+
+  if (!client.connected()) reconnectMQTT();
+  parseAndPublish(rxpacket);
 
   Radio.Sleep();
   Radio.Rx(0);
@@ -40,6 +104,13 @@ void setup() {
   delay(100);
   display.init();
   display.clear();
+  display.drawString(0, 0, "Connecting WiFi...");
+  display.display();
+
+  setupWiFi();
+  client.setServer(mqtt_server, mqtt_port);
+
+  display.clear();
   display.drawString(0, 0, "Waiting for data...");
   display.display();
 
@@ -52,5 +123,7 @@ void setup() {
 }
 
 void loop() {
+  if (!client.connected()) reconnectMQTT();
+  client.loop();
   Radio.IrqProcess();
 }

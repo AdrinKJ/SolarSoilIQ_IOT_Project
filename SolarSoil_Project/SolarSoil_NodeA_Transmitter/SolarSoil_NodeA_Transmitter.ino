@@ -74,9 +74,10 @@ void loop() {
     int soilPercent = map(soilRaw, 2514, 1464, 0, 100);
     soilPercent = constrain(soilPercent, 0, 100);
     float busVoltage = ina219.getBusVoltage_V();
+    float current_mA = ina219.getCurrent_mA();
 
-    sprintf(txpacket, "T:%.1f,H:%.1f,Soil:%d,V:%.2f",
-            temperature, humidity, soilPercent, busVoltage);
+    sprintf(txpacket, "T:%.1f,H:%.1f,Soil:%d,V:%.2f,C:%.2f",
+            temperature, humidity, soilPercent, busVoltage, current_mA);
 
     Serial.printf("Sending: %s\n", txpacket);
 
@@ -84,7 +85,7 @@ void loop() {
     display.drawString(0, 0, "Node A - Sensor Data");
     display.drawString(0, 15, "T:" + String(temperature) + " H:" + String(humidity));
     display.drawString(0, 30, "Soil:" + String(soilPercent) + "%");
-    display.drawString(0, 45, "V:" + String(busVoltage));
+    display.drawString(0, 45, "V:" + String(busVoltage) + " C:" + String(current_mA));
     display.display();
 
     Radio.Send((uint8_t *)txpacket, strlen(txpacket));
