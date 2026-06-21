@@ -22,6 +22,7 @@ PubSubClient client(espClient);
 static SSD1306Wire display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_128_64, RST_OLED);
 static RadioEvents_t RadioEvents;
 char rxpacket[256];
+bool firstPacketReceived = false;
 
 void VextON(void) {
   pinMode(Vext, OUTPUT);
@@ -52,27 +53,32 @@ void reconnectMQTT() {
   }
 }
 
-// Parses "T:25.1,H:46.0,Soil:65,V:5.2" into JSON for MQTT
-void parseAndPublish(char* packet) {
+// Parses "T:25.1,H:46.0,Soil:65,V:5.2,C:0.15,P:S" into JSON with RSSI added
+void parseAndPublish(char* packet, int16_t rssi) {
   float temp = 0, humidity = 0, voltage = 0, current = 0;
   int soil = 0;
+  char powerSource = 'U'; // Unknown if not found
 
   char* tPos = strstr(packet, "T:");
   char* hPos = strstr(packet, "H:");
   char* soilPos = strstr(packet, "Soil:");
   char* vPos = strstr(packet, "V:");
   char* cPos = strstr(packet, "C:");
+  char* pPos = strstr(packet, "P:");
 
   if (tPos) temp = atof(tPos + 2);
   if (hPos) humidity = atof(hPos + 2);
   if (soilPos) soil = atoi(soilPos + 5);
   if (vPos) voltage = atof(vPos + 2);
   if (cPos) current = atof(cPos + 2);
+  if (pPos) powerSource = *(pPos + 2);
 
-  char jsonPayload[200];
+  const char* powerStr = (powerSource == 'S') ? "solar" : (powerSource == 'B') ? "battery" : "unknown";
+
+  char jsonPayload[260];
   snprintf(jsonPayload, sizeof(jsonPayload),
-           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f}",
-           temp, humidity, soil, voltage, current);
+           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f,\"rssi\":%d,\"power_source\":\"%s\"}",
+           temp, humidity, soil, voltage, current, rssi, powerStr);
 
   Serial.println("Publishing: " + String(jsonPayload));
   client.publish(mqtt_topic, jsonPayload);
@@ -84,13 +90,23 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   Serial.printf("Received: %s, RSSI: %d\n", rxpacket, rssi);
 
   display.clear();
+
+  if (!firstPacketReceived) {
+    display.drawString(0, 0, "Handshake Positive!");
+    display.drawString(0, 15, "Connection Established");
+    display.display();
+    firstPacketReceived = true;
+    delay(2000); // Briefly show handshake message before showing data
+    display.clear();
+  }
+
   display.drawString(0, 0, "SolarSoil Gateway");
   display.drawString(0, 15, rxpacket);
   display.drawString(0, 35, "RSSI: " + String(rssi));
   display.display();
 
   if (!client.connected()) reconnectMQTT();
-  parseAndPublish(rxpacket);
+  parseAndPublish(rxpacket, rssi);
 
   Radio.Sleep();
   Radio.Rx(0);
@@ -111,7 +127,7 @@ void setup() {
   client.setServer(mqtt_server, mqtt_port);
 
   display.clear();
-  display.drawString(0, 0, "Waiting for data...");
+  display.drawString(0, 0, "Waiting for Node A...");
   display.display();
 
   RadioEvents.RxDone = OnRxDone;
