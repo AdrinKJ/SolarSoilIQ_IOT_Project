@@ -53,9 +53,9 @@ void reconnectMQTT() {
   }
 }
 
-// Parses "T:25.1,H:46.0,Soil:65,V:5.2,C:0.15,P:S" into JSON with RSSI added
+// Parses "T:25.1,H:46.0,Soil:65,V:5.2,C:0.15,P:S,B:5.78" into JSON with RSSI added
 void parseAndPublish(char* packet, int16_t rssi) {
-  float temp = 0, humidity = 0, voltage = 0, current = 0;
+  float temp = 0, humidity = 0, voltage = 0, current = 0, battVoltage = 0;
   int soil = 0;
   char powerSource = 'U'; // Unknown if not found
 
@@ -65,6 +65,7 @@ void parseAndPublish(char* packet, int16_t rssi) {
   char* vPos = strstr(packet, "V:");
   char* cPos = strstr(packet, "C:");
   char* pPos = strstr(packet, "P:");
+  char* bPos = strstr(packet, "B:");
 
   if (tPos) temp = atof(tPos + 2);
   if (hPos) humidity = atof(hPos + 2);
@@ -72,13 +73,14 @@ void parseAndPublish(char* packet, int16_t rssi) {
   if (vPos) voltage = atof(vPos + 2);
   if (cPos) current = atof(cPos + 2);
   if (pPos) powerSource = *(pPos + 2);
+  if (bPos) battVoltage = atof(bPos + 2);
 
   const char* powerStr = (powerSource == 'S') ? "solar" : (powerSource == 'B') ? "battery" : "unknown";
 
-  char jsonPayload[260];
+  char jsonPayload[300];
   snprintf(jsonPayload, sizeof(jsonPayload),
-           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f,\"rssi\":%d,\"power_source\":\"%s\"}",
-           temp, humidity, soil, voltage, current, rssi, powerStr);
+           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f,\"rssi\":%d,\"power_source\":\"%s\",\"battery_v\":%.2f}",
+           temp, humidity, soil, voltage, current, rssi, powerStr, battVoltage);
 
   Serial.println("Publishing: " + String(jsonPayload));
   client.publish(mqtt_topic, jsonPayload);
@@ -100,6 +102,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     display.clear();
   }
 
+  // Split the packet across two lines so nothing overflows the OLED width
   String packetStr = String(rxpacket);
   int splitPoint = packetStr.length() / 2;
   while (splitPoint < packetStr.length() && packetStr.charAt(splitPoint) != ',') {
