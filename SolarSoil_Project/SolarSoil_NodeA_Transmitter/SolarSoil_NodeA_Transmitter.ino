@@ -7,9 +7,7 @@
 #define DHTPIN 4
 #define DHTTYPE DHT22
 #define SOILPIN 7
-#define BATTPIN 6
 #define SOLAR_THRESHOLD_V 4.0
-#define BATT_CALIBRATION 1.204
 
 #define RF_FREQUENCY 868000000
 #define TX_OUTPUT_POWER 14
@@ -25,7 +23,7 @@ static RadioEvents_t RadioEvents;
 char txpacket[256];
 bool lora_idle = true;
 
-float lastTemp = 0, lastHumidity = 0, lastVoltage = 0, lastCurrent = 0, lastBattV = 0;
+float lastTemp = 0, lastHumidity = 0, lastVoltage = 0, lastCurrent = 0;
 int lastSoil = 0;
 char lastPowerSource = 'B';
 
@@ -45,25 +43,12 @@ void OnTxTimeout(void) {
   lora_idle = true;
 }
 
-float readBatteryVoltage() {
-  long total = 0;
-  const int samples = 50;
-  for (int i = 0; i < samples; i++) {
-    total += analogReadMilliVolts(BATTPIN);
-    delay(10);
-  }
-  float avgMv = total / (float)samples;
-  float dividerVoltage = avgMv / 1000.0;
-  return dividerVoltage * 2 * BATT_CALIBRATION;
-}
-
 void showReadings(int countdown) {
   display.clear();
   display.drawString(0, 0, "Node A - Next TX: " + String(countdown) + "s");
-  display.drawString(0, 13, "T:" + String(lastTemp) + " H:" + String(lastHumidity));
-  display.drawString(0, 26, "Soil:" + String(lastSoil) + "% P:" + String(lastPowerSource));
-  display.drawString(0, 39, "V:" + String(lastVoltage) + " C:" + String(lastCurrent));
-  display.drawString(0, 52, "Batt:" + String(lastBattV) + "V");
+  display.drawString(0, 15, "T:" + String(lastTemp) + " H:" + String(lastHumidity));
+  display.drawString(0, 30, "Soil:" + String(lastSoil) + "% P:" + String(lastPowerSource));
+  display.drawString(0, 45, "V:" + String(lastVoltage) + " C:" + String(lastCurrent));
   display.display();
 }
 
@@ -77,8 +62,6 @@ void setup() {
   dht.begin();
   I2C_INA.begin(33, 34);
   ina219.begin(&I2C_INA);
-  analogReadResolution(12);
-  analogSetAttenuation(ADC_11db);
 
   display.init();
   display.clear();
@@ -97,7 +80,7 @@ void setup() {
 
 void loop() {
   if (lora_idle) {
-    // Countdown from 10 to 1, updating display each second with last known readings
+    // Countdown from 10 to 1, updating display each second
     for (int i = 10; i >= 1; i--) {
       showReadings(i);
       delay(1000);
@@ -111,19 +94,17 @@ void loop() {
     float busVoltage = ina219.getBusVoltage_V();
     float current_mA = ina219.getCurrent_mA();
     char powerSource = (busVoltage >= SOLAR_THRESHOLD_V) ? 'S' : 'B';
-    float battVoltage = readBatteryVoltage();
 
-    // Save for next countdown cycle's display
+    // Save readings so the countdown display can show them next cycle
     lastTemp = temperature;
     lastHumidity = humidity;
     lastSoil = soilPercent;
     lastVoltage = busVoltage;
     lastCurrent = current_mA;
     lastPowerSource = powerSource;
-    lastBattV = battVoltage;
 
-    sprintf(txpacket, "T:%.1f,H:%.1f,Soil:%d,V:%.2f,C:%.2f,P:%c,B:%.2f",
-            temperature, humidity, soilPercent, busVoltage, current_mA, powerSource, battVoltage);
+    sprintf(txpacket, "T:%.1f,H:%.1f,Soil:%d,V:%.2f,C:%.2f,P:%c",
+            temperature, humidity, soilPercent, busVoltage, current_mA, powerSource);
 
     Serial.printf("Sending: %s\n", txpacket);
 
