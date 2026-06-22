@@ -8,10 +8,7 @@
 #define DHTTYPE DHT22
 #define SOILPIN 7
 #define SOLAR_THRESHOLD_V 4.0
-<<<<<<< HEAD
-#define SLEEP_SECONDS 10
-=======
->>>>>>> parent of 26f271f (Battery voltage added)
+#define SOLAR_CURRENT_THRESHOLD_MA 5.0
 
 #define RF_FREQUENCY 868000000
 #define TX_OUTPUT_POWER 14
@@ -25,15 +22,11 @@ DHT dht(DHTPIN, DHTTYPE);
 Adafruit_INA219 ina219;
 static RadioEvents_t RadioEvents;
 char txpacket[256];
-<<<<<<< HEAD
-volatile bool txDone = false;
-=======
 bool lora_idle = true;
 
 float lastTemp = 0, lastHumidity = 0, lastVoltage = 0, lastCurrent = 0;
 int lastSoil = 0;
 char lastPowerSource = 'B';
->>>>>>> parent of 26f271f (Battery voltage added)
 
 void VextON(void) {
   pinMode(Vext, OUTPUT);
@@ -42,37 +35,27 @@ void VextON(void) {
 
 void OnTxDone(void) {
   Serial.println("TX done");
-  txDone = true;
+  lora_idle = true;
 }
 
 void OnTxTimeout(void) {
   Radio.Sleep();
   Serial.println("TX Timeout");
-  txDone = true; // proceed to sleep anyway, don't get stuck forever
+  lora_idle = true;
 }
 
-<<<<<<< HEAD
-void goToSleep() {
-  Serial.println("Going to deep sleep for " + String(SLEEP_SECONDS) + " seconds...");
-  display.clear();
-  display.drawString(0, 0, "Sleeping...");
-=======
 void showReadings(int countdown) {
   display.clear();
   display.drawString(0, 0, "Node A - Next TX: " + String(countdown) + "s");
-  display.drawString(0, 15, "T:" + String(lastTemp) + " H:" + String(lastHumidity));
-  display.drawString(0, 30, "Soil:" + String(lastSoil) + "% P:" + String(lastPowerSource));
-  display.drawString(0, 45, "V:" + String(lastVoltage) + " C:" + String(lastCurrent));
->>>>>>> parent of 26f271f (Battery voltage added)
+  display.drawString(0, 15, "Soil:" + String(lastSoil) + "% P:" + String(lastPowerSource));
+  display.drawString(0, 30, "V:" + String(lastVoltage) + " C:" + String(lastCurrent));
+  display.drawString(0, 45, "T:" + String(lastTemp) + " H:" + String(lastHumidity));
   display.display();
-  delay(100);
-  esp_sleep_enable_timer_wakeup(SLEEP_SECONDS * 1000000ULL);
-  esp_deep_sleep_start();
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("SolarSoil Node A - Waking up");
+  Serial.println("SolarSoil Node A - LoRa Transmitter");
 
   VextON();
   delay(100);
@@ -94,46 +77,9 @@ void setup() {
   Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
                      LORA_SPREADING_FACTOR, LORA_CODINGRATE, 8, false,
                      true, 0, 0, false, 3000);
-
-  delay(500); // let DHT22 stabilize after power-up
-
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature();
-  int soilRaw = analogRead(SOILPIN);
-  int soilPercent = map(soilRaw, 2514, 1464, 0, 100);
-  soilPercent = constrain(soilPercent, 0, 100);
-  float busVoltage = ina219.getBusVoltage_V();
-  float current_mA = ina219.getCurrent_mA();
-  char powerSource = (busVoltage >= SOLAR_THRESHOLD_V) ? 'S' : 'B';
-
-  sprintf(txpacket, "T:%.1f,H:%.1f,Soil:%d,V:%.2f,C:%.2f,P:%c",
-          temperature, humidity, soilPercent, busVoltage, current_mA, powerSource);
-
-  Serial.printf("Sending: %s\n", txpacket);
-
-  display.clear();
-  display.drawString(0, 0, "Node A - Sensor Data");
-  display.drawString(0, 15, "T:" + String(temperature) + " H:" + String(humidity));
-  display.drawString(0, 30, "Soil:" + String(soilPercent) + "%");
-  display.drawString(0, 45, "V:" + String(busVoltage) + " C:" + String(current_mA));
-  display.drawString(0, 60, powerSource == 'S' ? "Power: SOLAR" : "Power: BATTERY");
-  display.display();
-
-  Radio.Send((uint8_t *)txpacket, strlen(txpacket));
-
-  // Wait until transmission confirms complete, with a safety timeout
-  unsigned long waitStart = millis();
-  while (!txDone && millis() - waitStart < 5000) {
-    Radio.IrqProcess();
-  }
-
-  goToSleep();
 }
 
 void loop() {
-<<<<<<< HEAD
-  // Not used - everything happens in setup() after each wake cycle
-=======
   if (lora_idle) {
     // Countdown from 10 to 1, updating display each second
     for (int i = 10; i >= 1; i--) {
@@ -148,7 +94,7 @@ void loop() {
     soilPercent = constrain(soilPercent, 0, 100);
     float busVoltage = ina219.getBusVoltage_V();
     float current_mA = ina219.getCurrent_mA();
-    char powerSource = (busVoltage >= SOLAR_THRESHOLD_V) ? 'S' : 'B';
+    char powerSource = (busVoltage >= SOLAR_THRESHOLD_V && current_mA >= SOLAR_CURRENT_THRESHOLD_MA) ? 'S' : 'B';
 
     // Save readings so the countdown display can show them next cycle
     lastTemp = temperature;
@@ -172,5 +118,4 @@ void loop() {
     lora_idle = false;
   }
   Radio.IrqProcess();
->>>>>>> parent of 26f271f (Battery voltage added)
 }
