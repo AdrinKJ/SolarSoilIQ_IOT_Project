@@ -53,26 +53,11 @@ void reconnectMQTT() {
   }
 }
 
-int batteryPercent(float voltage) {
-  // Mapped from typical alkaline AA discharge curve (4-cell pack)
-  if (voltage >= 6.0) return 100;
-  if (voltage <= 4.0) return 0;
-
-  float points[6][2] = {{6.0, 100}, {5.6, 80}, {5.2, 50}, {4.8, 25}, {4.4, 10}, {4.0, 0}};
-  for (int i = 0; i < 5; i++) {
-    if (voltage <= points[i][0] && voltage >= points[i+1][0]) {
-      float ratio = (voltage - points[i+1][0]) / (points[i][0] - points[i+1][0]);
-      return (int)(points[i+1][1] + ratio * (points[i][1] - points[i+1][1]));
-    }
-  }
-  return 0;
-}
-
 // Parses "T:25.1,H:46.0,Soil:65,V:5.2,C:0.15,P:S,B:5.78" into JSON with RSSI added
 void parseAndPublish(char* packet, int16_t rssi) {
   float temp = 0, humidity = 0, voltage = 0, current = 0, battVoltage = 0;
   int soil = 0;
-  char powerSource = 'U';
+  char powerSource = 'U'; // Unknown if not found
 
   char* tPos = strstr(packet, "T:");
   char* hPos = strstr(packet, "H:");
@@ -91,12 +76,11 @@ void parseAndPublish(char* packet, int16_t rssi) {
   if (bPos) battVoltage = atof(bPos + 2);
 
   const char* powerStr = (powerSource == 'S') ? "solar" : (powerSource == 'B') ? "battery" : "unknown";
-  int battPercent = batteryPercent(battVoltage);
 
-  char jsonPayload[320];
+  char jsonPayload[300];
   snprintf(jsonPayload, sizeof(jsonPayload),
-           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f,\"rssi\":%d,\"power_source\":\"%s\",\"battery_percent\":%d}",
-           temp, humidity, soil, voltage, current, rssi, powerStr, battPercent);
+           "{\"temp\":%.1f,\"humidity\":%.1f,\"soil\":%d,\"v\":%.2f,\"current\":%.2f,\"rssi\":%d,\"power_source\":\"%s\",\"battery_v\":%.2f}",
+           temp, humidity, soil, voltage, current, rssi, powerStr, battVoltage);
 
   Serial.println("Publishing: " + String(jsonPayload));
   client.publish(mqtt_topic, jsonPayload);
