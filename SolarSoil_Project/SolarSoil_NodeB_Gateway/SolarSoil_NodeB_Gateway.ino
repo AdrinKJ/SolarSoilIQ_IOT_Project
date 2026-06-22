@@ -96,10 +96,12 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
     display.drawString(0, 15, "Connection Established");
     display.display();
     firstPacketReceived = true;
-    delay(2000);
+    delay(2000); // Briefly show handshake message before showing data
     display.clear();
   }
 
+<<<<<<< HEAD
+=======
   String packetStr = String(rxpacket);
   int splitPoint = packetStr.length() / 2;
   while (splitPoint < packetStr.length() && packetStr.charAt(splitPoint) != ',') {
@@ -108,10 +110,10 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr) {
   String line1 = packetStr.substring(0, splitPoint + 1);
   String line2 = packetStr.substring(splitPoint + 1);
 
+>>>>>>> parent of 26f271f (Battery voltage added)
   display.drawString(0, 0, "SolarSoil Gateway");
-  display.drawString(0, 15, line1);
-  display.drawString(0, 28, line2);
-  display.drawString(0, 42, "RSSI: " + String(rssi));
+  display.drawString(0, 15, rxpacket);
+  display.drawString(0, 35, "RSSI: " + String(rssi));
   display.display();
 
   if (!client.connected()) reconnectMQTT();
